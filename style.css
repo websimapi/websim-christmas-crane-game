@@ -1,0 +1,202 @@
+:root {
+    --xmas-red: #d42426;
+    --xmas-green: #2f5233;
+    --xmas-gold: #f1b434;
+    --dark-bg: #1a1a1a;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #000;
+    color: white;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#game-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1;
+}
+
+#ui-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none; /* Let clicks pass to canvas/joystick */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+#header {
+    text-align: center;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+h1 {
+    margin: 0;
+    color: var(--xmas-gold);
+    font-size: 2rem;
+    letter-spacing: 2px;
+}
+
+#status {
+    font-size: 0.9rem;
+    color: #ddd;
+    margin-top: 5px;
+}
+
+#cooldown-timer {
+    background: rgba(0, 0, 0, 0.8);
+    padding: 10px 20px;
+    border-radius: 20px;
+    border: 2px solid var(--xmas-red);
+    align-self: center;
+    margin-top: 10px;
+    pointer-events: auto;
+}
+
+.hidden {
+    display: none !important;
+}
+
+#play-btn {
+    pointer-events: auto;
+    background: var(--xmas-red);
+    color: white;
+    border: 3px solid white;
+    padding: 15px 40px;
+    font-size: 1.5rem;
+    font-weight: bold;
+    border-radius: 50px;
+    cursor: pointer;
+    align-self: center;
+    margin-bottom: 20px;
+    transition: transform 0.1s;
+    box-shadow: 0 4px 15px rgba(212, 36, 38, 0.5);
+}
+
+#play-btn:active {
+    transform: scale(0.95);
+}
+
+#play-btn:disabled {
+    background: #555;
+    border-color: #777;
+    cursor: not-allowed;
+    opacity: 0.7;
+    box-shadow: none;
+}
+
+#controls-hint {
+    text-align: center;
+    font-size: 0.8rem;
+    opacity: 0.7;
+    margin-bottom: 10px;
+}
+
+#inventory-btn {
+    pointer-events: auto;
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: var(--xmas-green);
+    padding: 10px 15px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 2px solid var(--xmas-gold);
+}
+
+/* Modals */
+#inventory-modal, #win-modal {
+    pointer-events: auto;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+.modal-content {
+    background: var(--xmas-green);
+    padding: 30px;
+    border-radius: 15px;
+    border: 4px solid var(--xmas-gold);
+    text-align: center;
+    max-width: 80%;
+    max-height: 80%;
+    overflow-y: auto;
+}
+
+#inventory-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.inventory-item {
+    background: rgba(0,0,0,0.3);
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+button {
+    font-family: inherit;
+    cursor: pointer;
+}
+
+/* Mobile specific */
+#joystick-zone {
+    pointer-events: auto;
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 150px;
+    height: 150px;
+    display: none; /* Shown via JS detection */
+}
+
+#mobile-drop-btn {
+    pointer-events: auto;
+    position: absolute;
+    bottom: 40px;
+    right: 30px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--xmas-red);
+    border: 4px solid white;
+    color: white;
+    font-weight: bold;
+    display: none;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+
+#mobile-drop-btn:active {
+    background: #a01010;
+    transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+    #controls-hint { display: none; }
+    #play-btn { margin-bottom: 150px; } /* Room for joystick */
+}
