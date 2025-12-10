@@ -33,7 +33,7 @@ const prizeMat = new CANNON.Material('prize');
 
 // Contact Materials
 const prizeToPrize = new CANNON.ContactMaterial(prizeMat, prizeMat, { friction: 0.3, restitution: 0.1 });
-const gripperToPrize = new CANNON.ContactMaterial(gripperMat, prizeMat, { friction: 0.9, restitution: 0 }); // High friction to grab
+const gripperToPrize = new CANNON.ContactMaterial(gripperMat, prizeMat, { friction: 2.0, restitution: 0 }); // High friction to grab
 const slipperyContact = new CANNON.ContactMaterial(slipperyMat, prizeMat, { friction: 0.0, restitution: 0.1 });
 
 world.addContactMaterial(prizeToPrize);
@@ -43,9 +43,7 @@ world.addContactMaterial(slipperyContact);
 world.gravity.set(0, -9.82, 0);
 
 // --- 3D Objects References ---
-let craneBase, clawGroup, fingers = [];
-let physicsBodies = [];
-let clawConstraint = null; // The physical constraint when holding logic is active (optional)
+let craneBase, fingers = [];
 let craneBody, fingerBodies = [];
 
 async function init() {
@@ -181,70 +179,104 @@ function buildClaw() {
     scene.add(craneBase);
 
     // The Rod
-    const rodGeo = new THREE.CylinderGeometry(0.1, 0.1, 4);
+    const rodGeo = new THREE.CylinderGeometry(0.05, 0.05, 4);
     const rodMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
     const rod = new THREE.Mesh(rodGeo, rodMat);
     rod.position.y = 2; // Offset so 0 is bottom
     craneBase.add(rod);
 
     // The Claw Hub
-    const hubGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4);
-    const hubMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const hubGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
+    const hubMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
     const hub = new THREE.Mesh(hubGeo, hubMat);
     craneBase.add(hub);
 
-    // Physics Body for Crane Hub (Kinematic - we move it manually)
-    const hubShape = new CANNON.Cylinder(0.5, 0.5, 0.4, 8);
+    // Physics Body for Crane Hub (Kinematic)
     craneBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, position: new CANNON.Vec3(0, 6, 0) });
-    craneBody.addShape(hubShape);
+    craneBody.addShape(new CANNON.Box(new CANNON.Vec3(0.4, 0.15, 0.4)));
     world.addBody(craneBody);
 
-    // Fingers
-    const fingerGeo = new THREE.BoxGeometry(0.2, 1.5, 0.2);
-    const fingerMat = new THREE.MeshStandardMaterial({ color: 0x990000 });
+    // Fingers - 3 Finger Claw for better stability
+    const fingerMat = new THREE.MeshStandardMaterial({ color: 0xd42426, metalness: 0.3, roughness: 0.4 });
+    fingers = [];
+    fingerBodies = [];
     
-    // Create 4 fingers
-    for(let i=0; i<4; i++) {
-        const finger = new THREE.Mesh(fingerGeo, fingerMat);
-        // Visuals are tricky with physics articulation, we'll keep visuals simple and parented to hub
-        // but animate their rotation
-        finger.userData.angle = (Math.PI / 2) * i;
-        hub.add(finger);
-        fingers.push(finger);
+    for(let i=0; i<3; i++) {
+        const angle = (Math.PI * 2 / 3) * i;
+        
+        // Visual Finger Container
+        const fingerContainer = new THREE.Group();
+        scene.add(fingerContainer);
+        fingers.push(fingerContainer);
 
-        // Physics Fingers
-        const fShape = new CANNON.Box(new CANNON.Vec3(0.1, 0.75, 0.1));
-        const fBody = new CANNON.Body({ mass: 1, material: gripperMat });
-        fBody.addShape(fShape);
+        // Visual Parts (Local to container)
+        // Part 1: Vertical Arm
+        const armGeo = new THREE.BoxGeometry(0.1, 1.0, 0.1);
+        const arm = new THREE.Mesh(armGeo, fingerMat);
+        arm.position.y = -0.5; 
+        fingerContainer.add(arm);
+
+        // Part 2: Hook Tip (Angled inward)
+        const tipGeo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
+        const tip = new THREE.Mesh(tipGeo, fingerMat);
+        tip.position.set(0, -1.05, 0.1); 
+        tip.rotation.x = -Math.PI / 4; 
+        fingerContainer.add(tip);
+
+        // Physics Finger: Compound Shape
+        const fBody = new CANNON.Body({ mass: 0.2, material: gripperMat });
+        
+        // Shape 1: Arm
+        fBody.addShape(new CANNON.Box(new CANNON.Vec3(0.05, 0.5, 0.05)), new CANNON.Vec3(0, -0.5, 0));
+        
+        // Shape 2: Tip
+        const q = new CANNON.Quaternion();
+        q.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 4);
+        fBody.addShape(new CANNON.Box(new CANNON.Vec3(0.05, 0.15, 0.05)), new CANNON.Vec3(0, -1.05, 0.1), q);
+
+        // Position & Orient
+        const radius = 0.3;
         fBody.position.set(
-            Math.sin(finger.userData.angle) * 0.6, 
-            5.2, 
-            Math.cos(finger.userData.angle) * 0.6
+            Math.sin(angle) * radius, 
+            6, 
+            Math.cos(angle) * radius
         );
-        fBody.linearDamping = 0.5;
+        
+        // Rotate body to face center
+        const orientQuat = new CANNON.Quaternion();
+        orientQuat.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle + Math.PI);
+        fBody.quaternion.copy(orientQuat);
+        
+        fBody.linearDamping = 0.1;
         fBody.angularDamping = 0.5;
         world.addBody(fBody);
         fingerBodies.push(fBody);
 
-        // Connect finger to hub
-        // We need a constraint that allows rotation (Hinge)
-        const pivotA = new CANNON.Vec3(Math.sin(finger.userData.angle) * 0.4, -0.2, Math.cos(finger.userData.angle) * 0.4);
-        const pivotB = new CANNON.Vec3(0, 0.75, 0); // Top of finger
-        const axis = new CANNON.Vec3(Math.cos(finger.userData.angle), 0, -Math.sin(finger.userData.angle)); // Tangent to circle
+        // Constraint
+        const pivotA = new CANNON.Vec3(Math.sin(angle) * radius, 0, Math.cos(angle) * radius);
+        const pivotB = new CANNON.Vec3(0, 0, 0);
+        
+        // Tangent Axis for hinge
+        const axis = new CANNON.Vec3(Math.cos(angle), 0, -Math.sin(angle));
         
         const constraint = new CANNON.HingeConstraint(craneBody, fBody, {
             pivotA: pivotA,
             axisA: axis,
             pivotB: pivotB,
-            axisB: axis,
+            axisB: new CANNON.Vec3(1, 0, 0), // Local X axis of finger
         });
-        constraint.enableMotor(); // We will use motor to open/close
+        
+        // Limits to prevent spinning: -0.2 (Inward) to 0.8 (Outward)
+        constraint.setLimits(-0.2, 0.8); 
+        
+        constraint.enableMotor();
         constraint.setMotorSpeed(0);
-        constraint.setMotorMaxForce(10);
+        constraint.setMotorMaxForce(100); 
+        constraint.collideConnected = false;
+
         world.addConstraint(constraint);
         
-        finger.userData.constraint = constraint;
-        finger.userData.physicsBody = fBody;
+        fingerContainer.userData = { constraint };
     }
 }
 
@@ -289,7 +321,7 @@ function spawnPrizes() {
         mesh.receiveShadow = true;
         scene.add(mesh);
 
-        const body = new CANNON.Body({ mass: 0.5, material: prizeMat });
+        const body = new CANNON.Body({ mass: 0.1, material: prizeMat }); // Lower mass to make grabbing easier
         body.addShape(shape);
         body.position.set(
             (Math.random() - 0.5) * 6,
@@ -465,16 +497,18 @@ function updateCraneLogic(dt) {
 }
 
 function openClaw() {
-    fingerBodies.forEach((body, i) => {
-        const finger = fingers[i];
-        finger.userData.constraint.setMotorSpeed(2); // Open
+    fingers.forEach((finger) => {
+        if (finger.userData.constraint) {
+            finger.userData.constraint.setMotorSpeed(3);
+        }
     });
 }
 
 function closeClaw() {
-    fingerBodies.forEach((body, i) => {
-        const finger = fingers[i];
-        finger.userData.constraint.setMotorSpeed(-3); // Close tightly
+    fingers.forEach((finger) => {
+        if (finger.userData.constraint) {
+            finger.userData.constraint.setMotorSpeed(-5); // Strong grip
+        }
     });
 }
 
@@ -616,16 +650,10 @@ function animate() {
     
     // Sync Fingers
     fingerBodies.forEach((body, i) => {
-        fingers[i].position.copy(body.position);
-        // Transform world pos to local pos relative to hub for rendering hierarchy?
-        // Actually, since fingers are children of hub in ThreeJS, we need to be careful.
-        // It's easier to just set world position of mesh, but that breaks the hierarchy logic visually if we aren't careful.
-        // Let's detach fingers from hub in ThreeJS and just add them to scene to match Physics directly.
-        if (fingers[i].parent !== scene) {
-            fingers[i].parent.remove(fingers[i]);
-            scene.add(fingers[i]);
+        if (fingers[i]) {
+            fingers[i].position.copy(body.position);
+            fingers[i].quaternion.copy(body.quaternion);
         }
-        fingers[i].quaternion.copy(body.quaternion);
     });
 
     renderer.render(scene, camera);
