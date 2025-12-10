@@ -337,6 +337,14 @@ function checkCooldown() {
 }
 
 async function startGame() {
+    // Resume audio context on user interaction
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    } else if (!audioCtx) {
+        // Initialize if not ready
+        playSound('silence'); // Dummy call to init
+    }
+
     if (!db.canPlay()) return;
 
     await db.useFreePlay();
@@ -606,8 +614,18 @@ function onWindowResize() {
 }
 
 // Audio Helper
+let audioCtx;
 function playSound(type) {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    // Ensure context is running (browsers might suspend it)
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+    }
+
+    const ctx = audioCtx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -625,3 +643,9 @@ function playSound(type) {
         osc.stop(ctx.currentTime + 0.5);
     }
 }
+
+// Start the game initialization
+init().catch(e => {
+    console.error("Initialization failed:", e);
+    document.getElementById('status').innerText = "Error loading game.";
+});

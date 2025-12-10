@@ -9,21 +9,48 @@ export class DataManager {
 
     async init() {
         this.currentUser = await window.websim.getCurrentUser();
-        // Fetch existing record for this user
-        const records = await this.room.collection(this.collectionName)
-            .filter({ username: this.currentUser.username })
-            .getList();
+        
+        return new Promise((resolve) => {
+            let resolved = false;
+            const collection = this.room.collection(this.collectionName).filter({ username: this.currentUser.username });
 
-        if (records.length > 0) {
-            this.userRecord = records[0];
-        } else {
-            // Create the single row for this user
-            this.userRecord = await this.room.collection(this.collectionName).create({
-                play_data: JSON.stringify({ last_played: 0 }),
-                inventory: JSON.stringify([])
+            // Robust check: Subscribe to updates to catch initial data load
+            const unsubscribe = collection.subscribe((records) => {
+                if (resolved) return;
+                
+                // If we receive records, the user exists
+                if (records && records.length > 0) {
+                    this.userRecord = records[0];
+                    resolved = true;
+                    unsubscribe();
+                    resolve(this.userRecord);
+                }
             });
-        }
-        return this.userRecord;
+
+            // Fallback: If no records found after 1 second, assume new user
+            setTimeout(async () => {
+                if (resolved) return;
+                unsubscribe();
+                
+                // Double check before creating
+                const records = collection.getList();
+                if (records && records.length > 0) {
+                    this.userRecord = records[0];
+                } else {
+                    try {
+                        // Create the single row for this user
+                        this.userRecord = await this.room.collection(this.collectionName).create({
+                            play_data: JSON.stringify({ last_played: 0 }),
+                            inventory: JSON.stringify([])
+                        });
+                    } catch (e) {
+                        console.error("Error creating user record:", e);
+                    }
+                }
+                resolved = true;
+                resolve(this.userRecord);
+            }, 1000);
+        });
     }
 
     canPlay() {
