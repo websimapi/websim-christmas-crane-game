@@ -1,7 +1,7 @@
 // Singleton management for user data
 export class DataManager {
     constructor() {
-        this.room = new WebsimSocket();
+        this.room = null; // Lazy init
         this.collectionName = 'christmas_crane_users_v1';
         this.userRecord = null;
         this.currentUser = null;
@@ -12,6 +12,10 @@ export class DataManager {
 
         this.initPromise = new Promise(async (resolve, reject) => {
             try {
+                if (!window.WebsimSocket) {
+                    throw new Error("WebsimSocket SDK not loaded");
+                }
+                this.room = new WebsimSocket();
                 this.currentUser = await window.websim.getCurrentUser();
                 
                 let resolved = false;

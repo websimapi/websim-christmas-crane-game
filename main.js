@@ -5,9 +5,9 @@ import { DataManager } from './db.js';
 
 // --- Game Constants ---
 const WORLD_SCALE = 1;
-const CRANE_SPEED = 4;
+const CRANE_SPEED = 3;
 const CRANE_LIMITS = { x: 3.5, z: 3.5 };
-const DROP_SPEED = 3;
+const DROP_SPEED = 2.5;
 const CLAW_FORCE = 150;
 
 // --- State ---
@@ -52,6 +52,7 @@ async function init() {
     
     // 2. 3D Setup & Rendering (Start immediately so user sees something)
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     document.getElementById('game-container').appendChild(renderer.domElement);
 
@@ -224,7 +225,7 @@ function buildClaw() {
         fingerContainer.add(tip);
 
         // Physics Finger: Compound Shape
-        const fBody = new CANNON.Body({ mass: 0.2, material: gripperMat });
+        const fBody = new CANNON.Body({ mass: 0.5, material: gripperMat });
         
         // Shape 1: Arm
         fBody.addShape(new CANNON.Box(new CANNON.Vec3(0.05, 0.5, 0.05)), new CANNON.Vec3(0, -0.5, 0));
@@ -247,8 +248,8 @@ function buildClaw() {
         orientQuat.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle + Math.PI);
         fBody.quaternion.copy(orientQuat);
         
-        fBody.linearDamping = 0.1;
-        fBody.angularDamping = 0.5;
+        fBody.linearDamping = 0.5;
+        fBody.angularDamping = 0.8;
         world.addBody(fBody);
         fingerBodies.push(fBody);
 
@@ -266,12 +267,12 @@ function buildClaw() {
             axisB: new CANNON.Vec3(1, 0, 0), // Local X axis of finger
         });
         
-        // Limits to prevent spinning: -0.2 (Inward) to 0.8 (Outward)
-        constraint.setLimits(-0.2, 0.8); 
+        // Limits to prevent spinning: -0.2 (Inward) to 0.6 (Outward)
+        constraint.setLimits(-0.3, 0.6); 
         
         constraint.enableMotor();
         constraint.setMotorSpeed(0);
-        constraint.setMotorMaxForce(100); 
+        constraint.setMotorMaxForce(50); 
         constraint.collideConnected = false;
 
         world.addConstraint(constraint);
@@ -499,7 +500,7 @@ function updateCraneLogic(dt) {
 function openClaw() {
     fingers.forEach((finger) => {
         if (finger.userData.constraint) {
-            finger.userData.constraint.setMotorSpeed(3);
+            finger.userData.constraint.setMotorSpeed(2);
         }
     });
 }
@@ -507,7 +508,7 @@ function openClaw() {
 function closeClaw() {
     fingers.forEach((finger) => {
         if (finger.userData.constraint) {
-            finger.userData.constraint.setMotorSpeed(-5); // Strong grip
+            finger.userData.constraint.setMotorSpeed(-3); 
         }
     });
 }
@@ -596,29 +597,30 @@ function setupUI() {
             if(state.isPlaying && state.craneMode === 'MOVING') state.input.drop = true;
         });
 
-        const manager = nipplejs.create({
-            zone: document.getElementById('joystick-zone'),
-            mode: 'static',
-            position: { left: '50%', top: '50%' },
-            color: 'white'
-        });
+        // Safe access to create
+        const createJoystick = nipplejs.create || (nipplejs.default ? nipplejs.default.create : null);
+        if (createJoystick) {
+            const manager = createJoystick({
+                zone: document.getElementById('joystick-zone'),
+                mode: 'static',
+                position: { left: '50%', top: '50%' },
+                color: 'white'
+            });
 
-        manager.on('move', (evt, data) => {
-            if (!state.isPlaying) return;
-            const force = Math.min(data.force, 1.0);
-            const angle = data.angle.radian;
-            // NippleJS angle: 0 is right, PI/2 is up.
-            // ThreeJS X is right, Z is down (towards camera).
-            // Input y needs to be negative for 'up' in 2d, which maps to negative Z in 3d
-            
-            state.input.x = Math.cos(angle) * force;
-            state.input.y = -Math.sin(angle) * force; 
-        });
+            manager.on('move', (evt, data) => {
+                if (!state.isPlaying) return;
+                const force = Math.min(data.force, 1.0);
+                const angle = data.angle.radian;
+                
+                state.input.x = Math.cos(angle) * force;
+                state.input.y = -Math.sin(angle) * force; 
+            });
 
-        manager.on('end', () => {
-            state.input.x = 0;
-            state.input.y = 0;
-        });
+            manager.on('end', () => {
+                state.input.x = 0;
+                state.input.y = 0;
+            });
+        }
     }
 }
 
