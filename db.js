@@ -8,49 +8,62 @@ export class DataManager {
     }
 
     async init() {
-        this.currentUser = await window.websim.getCurrentUser();
-        
-        return new Promise((resolve) => {
-            let resolved = false;
-            const collection = this.room.collection(this.collectionName).filter({ username: this.currentUser.username });
+        if (this.initPromise) return this.initPromise;
 
-            // Robust check: Subscribe to updates to catch initial data load
-            const unsubscribe = collection.subscribe((records) => {
-                if (resolved) return;
+        this.initPromise = new Promise(async (resolve, reject) => {
+            try {
+                this.currentUser = await window.websim.getCurrentUser();
                 
-                // If we receive records, the user exists
-                if (records && records.length > 0) {
-                    this.userRecord = records[0];
-                    resolved = true;
+                let resolved = false;
+                const collection = this.room.collection(this.collectionName).filter({ username: this.currentUser.username });
+
+                // Robust check: Subscribe to updates to catch initial data load
+                const unsubscribe = collection.subscribe((records) => {
+                    if (resolved) return;
+                    
+                    // If we receive records, the user exists
+                    if (records && records.length > 0) {
+                        this.userRecord = records[0];
+                        resolved = true;
+                        unsubscribe();
+                        resolve(this.userRecord);
+                    }
+                });
+
+                // Fallback: If no records found after 1 second, assume new user
+                setTimeout(async () => {
+                    if (resolved) return;
                     unsubscribe();
-                    resolve(this.userRecord);
-                }
-            });
-
-            // Fallback: If no records found after 1 second, assume new user
-            setTimeout(async () => {
-                if (resolved) return;
-                unsubscribe();
-                
-                // Double check before creating
-                const records = collection.getList();
-                if (records && records.length > 0) {
-                    this.userRecord = records[0];
-                } else {
+                    
                     try {
-                        // Create the single row for this user
-                        this.userRecord = await this.room.collection(this.collectionName).create({
-                            play_data: JSON.stringify({ last_played: 0 }),
-                            inventory: JSON.stringify([])
-                        });
+                        // Double check before creating
+                        const records = collection.getList();
+                        if (records && records.length > 0) {
+                            this.userRecord = records[0];
+                        } else {
+                            // Create the single row for this user
+                            this.userRecord = await this.room.collection(this.collectionName).create({
+                                play_data: JSON.stringify({ last_played: 0 }),
+                                inventory: JSON.stringify([])
+                            });
+                        }
+                        resolved = true;
+                        resolve(this.userRecord);
                     } catch (e) {
                         console.error("Error creating user record:", e);
+                        // If creation fails, we can't play, but we shouldn't crash completely.
+                        // Resolve with null so UI can show error or retry.
+                        resolved = true;
+                        resolve(null);
                     }
-                }
-                resolved = true;
-                resolve(this.userRecord);
-            }, 1000);
+                }, 1000);
+            } catch (err) {
+                console.error("DB Init Fatal Error:", err);
+                reject(err);
+            }
         });
+        
+        return this.initPromise;
     }
 
     canPlay() {
@@ -79,9 +92,16 @@ export class DataManager {
         };
 
         // Update the first column (play_data)
-        await this.room.collection(this.collectionName).update(this.userRecord.id, {
+        // Add a timeout race to prevent infinite hanging
+        const updatePromise = this.room.collection(this.collectionName).update(this.userRecord.id, {
             play_data: JSON.stringify(playData)
         });
+
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Update timed out")), 5000)
+        );
+
+        await Promise.race([updatePromise, timeoutPromise]);
         
         // Update local cache
         this.userRecord.play_data = JSON.stringify(playData);

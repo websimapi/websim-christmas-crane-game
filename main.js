@@ -52,13 +52,7 @@ async function init() {
     // 1. UI Setup
     setupUI();
     
-    // 2. DB Init
-    updateStatus("Connecting to Santa's Workshop...");
-    await db.init();
-    checkCooldown();
-    setInterval(checkCooldown, 1000); // Update timer
-
-    // 3. 3D Setup
+    // 2. 3D Setup & Rendering (Start immediately so user sees something)
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     document.getElementById('game-container').appendChild(renderer.domElement);
@@ -93,6 +87,17 @@ async function init() {
 
     // Start Loop
     animate();
+
+    // 3. DB Init (Async)
+    updateStatus("Connecting to Santa's Workshop...");
+    try {
+        await db.init();
+        checkCooldown();
+        setInterval(checkCooldown, 1000); // Update timer
+    } catch (e) {
+        console.error("DB Init Failed:", e);
+        updateStatus("Connection Failed. Refresh to try again.");
+    }
 }
 
 function buildMachine() {
@@ -337,6 +342,9 @@ function checkCooldown() {
 }
 
 async function startGame() {
+    const playBtn = document.getElementById('play-btn');
+    if (playBtn.disabled) return;
+
     // Resume audio context on user interaction
     if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume();
@@ -347,15 +355,31 @@ async function startGame() {
 
     if (!db.canPlay()) return;
 
-    await db.useFreePlay();
-    checkCooldown(); // Update UI immediately
+    // UI Feedback - immediate
+    playBtn.disabled = true;
+    const originalText = playBtn.innerText;
+    playBtn.innerText = "STARTING...";
+
+    try {
+        await db.useFreePlay();
+    } catch (e) {
+        console.error("Game Start Error:", e);
+        alert("Could not start game. Please check your connection and try again.");
+        playBtn.innerText = originalText;
+        playBtn.disabled = false;
+        checkCooldown();
+        return;
+    }
+
+    checkCooldown(); // Update UI immediately (timer will appear)
 
     state.isPlaying = true;
     state.craneMode = 'MOVING';
-    document.getElementById('play-btn').classList.add('hidden');
+    playBtn.classList.add('hidden');
     
     // Reset Crane Position
     craneBody.position.set(0, 6, 0);
+    craneBody.velocity.set(0, 0, 0);
     openClaw();
 }
 
